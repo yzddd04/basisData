@@ -24,41 +24,24 @@ const Dashboard: React.FC = () => {
     const fetchDashboardData = async () => {
       try {
         setIsLoading(true);
-        
-        // Fetch book stats
-        const booksRes = await api.get('/books', { params: { limit: 1 } }); // Fetching total count
-        const totalBooks = booksRes.data.total;
-        
-        // TODO: Fetch available books count from a suitable endpoint or calculate if possible
-        // Using totalBooks as a placeholder for now, backend endpoint needed for accuracy.
-        const availableBooks = totalBooks; 
-        
+        // Fetch all books
+        const booksRes = await api.get('/books', { params: { limit: 9999 } });
+        const books = booksRes.data.books || [];
+        const totalBooks = books.reduce((sum, b) => sum + (b.copies || 0), 0);
+        const availableBooks = books.reduce((sum, b) => sum + (b.availableCopies || 0), 0);
         // Fetch member count
         const membersRes = await api.get('/members', { params: { limit: 1 } });
         const totalMembers = membersRes.data.total;
-        
         // Fetch active transactions count
-        const activeTransactionsRes = await api.get('/transactions', { 
-          params: { status: 'borrowed', limit: 1 } 
-        });
+        const activeTransactionsRes = await api.get('/transactions', { params: { status: 'borrowed', limit: 1 } });
         const activeTransactions = activeTransactionsRes.data.total;
-        
         // Fetch overdue books count
-        const overdueRes = await api.get('/transactions', { 
-          params: { status: 'overdue', limit: 1 } 
-        });
+        const overdueRes = await api.get('/transactions', { params: { status: 'overdue', limit: 1 } });
         const overdueBooks = overdueRes.data.total;
-        
         // Fetch popular books
-        const popularBooksRes = await api.get('/reports/popular-books', {
-          params: { period: 'month', limit: 5 }
-        });
-        
+        const popularBooksRes = await api.get('/reports/popular-books', { params: { period: 'month', limit: 5 } });
         // Fetch active borrowers
-        const activeBorrowersRes = await api.get('/reports/active-borrowers', {
-          params: { period: 'month', limit: 5 }
-        });
-        
+        const activeBorrowersRes = await api.get('/reports/active-borrowers', { params: { period: 'month', limit: 5 } });
         setStats({
           totalBooks,
           availableBooks,
@@ -66,17 +49,14 @@ const Dashboard: React.FC = () => {
           activeTransactions,
           overdueBooks,
         });
-        
         setPopularBooks(popularBooksRes.data);
         setActiveBorrowers(activeBorrowersRes.data);
-        
         setIsLoading(false);
       } catch (error) {
         console.error('Error fetching dashboard data:', error);
         setIsLoading(false);
       }
     };
-    
     fetchDashboardData();
   }, []);
 
@@ -106,6 +86,12 @@ const Dashboard: React.FC = () => {
 
   return (
     <div>
+      <div className="mb-4">
+        <Link to="/" className="inline-flex items-center px-4 py-2 bg-black text-white rounded hover:bg-gray-900 transition-colors">
+          <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" /></svg>
+          Back
+        </Link>
+      </div>
       <div className="mb-6">
         <h1 className="text-2xl font-bold text-gray-900">Dashboard</h1>
         <p className="text-gray-500">Welcome to the Library Management System</p>
@@ -130,7 +116,7 @@ const Dashboard: React.FC = () => {
                 </div>
               </div>
               <div className="mt-4">
-                <Link to="/books" className="text-sm text-primary-600 hover:text-primary-800">
+                <Link to="/dashboard/books" className="text-sm text-primary-600 hover:text-primary-800">
                   View all books
                 </Link>
               </div>
@@ -147,7 +133,7 @@ const Dashboard: React.FC = () => {
                 </div>
               </div>
               <div className="mt-4">
-                <Link to="/members" className="text-sm text-teal-600 hover:text-teal-800">
+                <Link to="/dashboard/members" className="text-sm text-teal-600 hover:text-teal-800">
                   View all members
                 </Link>
               </div>
@@ -164,7 +150,7 @@ const Dashboard: React.FC = () => {
                 </div>
               </div>
               <div className="mt-4">
-                <Link to="/transactions" className="text-sm text-amber-600 hover:text-amber-800">
+                <Link to="/dashboard/transactions" className="text-sm text-amber-600 hover:text-amber-800">
                   View all transactions
                 </Link>
               </div>
@@ -181,7 +167,7 @@ const Dashboard: React.FC = () => {
                 </div>
               </div>
               <div className="mt-4">
-                <Link to="/reports/overdue" className="text-sm text-red-600 hover:text-red-800">
+                <Link to="/dashboard/reports/overdue" className="text-sm text-red-600 hover:text-red-800">
                   View overdue books
                 </Link>
               </div>
@@ -306,7 +292,7 @@ const Dashboard: React.FC = () => {
             <h2 className="text-lg font-semibold mb-4">Quick Actions</h2>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               <Link
-                to="/transactions/new"
+                to="/dashboard/transactions/new"
                 className="bg-primary-50 hover:bg-primary-100 p-4 rounded-lg border border-primary-200 flex items-center justify-between transition"
               >
                 <div className="flex items-center">
@@ -319,7 +305,7 @@ const Dashboard: React.FC = () => {
               </Link>
               
               <Link
-                to="/books/add"
+                to="/dashboard/books/add"
                 className="bg-teal-50 hover:bg-teal-100 p-4 rounded-lg border border-teal-200 flex items-center justify-between transition"
               >
                 <div className="flex items-center">
@@ -332,7 +318,7 @@ const Dashboard: React.FC = () => {
               </Link>
               
               <Link
-                to="/members/add"
+                to="/dashboard/members/add"
                 className="bg-amber-50 hover:bg-amber-100 p-4 rounded-lg border border-amber-200 flex items-center justify-between transition"
               >
                 <div className="flex items-center">

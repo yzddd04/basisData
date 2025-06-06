@@ -21,6 +21,7 @@ import Books from './pages/books/Books';
 import BookDetails from './pages/books/BookDetails';
 import AddBook from './pages/books/AddBook';
 import EditBook from './pages/books/EditBook';
+import Showcase from './pages/Showcase';
 
 // Member Pages
 import Members from './pages/members/Members';
@@ -41,6 +42,7 @@ import EditStaff from './pages/staff/EditStaff';
 
 // Report Pages
 import Reports from './pages/reports/Reports';
+import OverdueReport from './pages/reports/OverdueReport';
 
 // Trash Pages
 import Trash from './pages/trash/Trash';
@@ -52,10 +54,13 @@ function App() {
         <Router>
           <Toaster position="top-right" />
           <Routes>
+            {/* Public Routes */}
+            <Route path="/" element={<Showcase />} />
             <Route path="/login" element={<Login />} />
             <Route path="/register" element={<Register />} />
             
-            <Route path="/" element={<ProtectedRoute><DashboardLayout /></ProtectedRoute>}>
+            {/* Protected Routes */}
+            <Route path="/dashboard" element={<ProtectedRoute><DashboardLayout /></ProtectedRoute>}>
               <Route index element={<Dashboard />} />
               
               {/* Book Routes */}
@@ -77,6 +82,7 @@ function App() {
               
               {/* Report Routes */}
               <Route path="reports" element={<Reports />} />
+              <Route path="reports/overdue" element={<OverdueReport />} />
               
               {/* Admin Routes */}
               <Route path="staff" element={<AdminRoute><Staff /></AdminRoute>} />

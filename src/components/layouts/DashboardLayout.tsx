@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { Outlet, Link, useNavigate, useLocation } from 'react-router-dom';
 import { 
   BookOpen, Users, RepeatIcon, UserCog, BarChart3, Trash2, 
@@ -13,6 +13,30 @@ const DashboardLayout: React.FC = () => {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [notificationsOpen, setNotificationsOpen] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
+
+  // Tambah ref untuk pop-up
+  const notifRef = useRef<HTMLDivElement>(null);
+  const profileRef = useRef<HTMLDivElement>(null);
+
+  // Close pop-up jika klik di luar area
+  useEffect(() => {
+    function handleClickOutside(event: MouseEvent) {
+      if (notificationsOpen && notifRef.current && !notifRef.current.contains(event.target as Node)) {
+        setNotificationsOpen(false);
+      }
+      if (profileOpen && profileRef.current && !profileRef.current.contains(event.target as Node)) {
+        setProfileOpen(false);
+      }
+    }
+    if (notificationsOpen || profileOpen) {
+      document.addEventListener('mousedown', handleClickOutside);
+    } else {
+      document.removeEventListener('mousedown', handleClickOutside);
+    }
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, [notificationsOpen, profileOpen]);
 
   const handleLogout = () => {
     logout();
@@ -31,29 +55,29 @@ const DashboardLayout: React.FC = () => {
   ];
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-white">
       {/* Mobile sidebar overlay */}
       {sidebarOpen && (
         <div 
-          className="fixed inset-0 bg-gray-800 bg-opacity-50 z-20 lg:hidden"
+          className="fixed inset-0 bg-black bg-opacity-50 z-20 lg:hidden"
           onClick={() => setSidebarOpen(false)}
         />
       )}
 
       {/* Sidebar */}
       <aside
-        className={`fixed top-0 left-0 z-30 h-full w-64 transform bg-primary-950 text-white transition-transform duration-300 ease-in-out lg:translate-x-0 ${
+        className={`fixed top-0 left-0 z-30 h-full w-64 transform bg-black text-white transition-transform duration-300 ease-in-out lg:translate-x-0 ${
           sidebarOpen ? 'translate-x-0' : '-translate-x-full'
         }`}
       >
-        <div className="flex h-16 items-center justify-between px-4 border-b border-primary-800">
+        <div className="flex h-16 items-center justify-between px-4 border-b border-gray-800">
           <Link to="/" className="flex items-center space-x-2">
             <BookOpen className="h-8 w-8" />
-            <h1 className="text-xl font-bold">LibraryMS</h1>
+            <h1 className="text-xl font-bold text-white">LibraryMS</h1>
           </Link>
           <button
             onClick={() => setSidebarOpen(false)}
-            className="p-1 rounded-full hover:bg-primary-800 lg:hidden"
+            className="p-1 rounded-full hover:bg-gray-800 lg:hidden"
           >
             <X className="h-6 w-6" />
           </button>
@@ -63,9 +87,9 @@ const DashboardLayout: React.FC = () => {
           <ul className="space-y-1">
             <li>
               <Link
-                to="/"
+                to="/dashboard"
                 className={`flex items-center px-4 py-3 rounded-md transition-colors ${
-                  isActive('/') ? 'bg-primary-800 text-white' : 'text-gray-300 hover:bg-primary-900 hover:text-white'
+                  isActive('/') ? 'bg-white text-black' : 'text-white hover:bg-gray-900 hover:text-white'
                 }`}
                 onClick={() => setSidebarOpen(false)}
               >
@@ -75,9 +99,9 @@ const DashboardLayout: React.FC = () => {
             </li>
             <li>
               <Link
-                to="/books"
+                to="/dashboard/books"
                 className={`flex items-center px-4 py-3 rounded-md transition-colors ${
-                  isActive('/books') ? 'bg-primary-800 text-white' : 'text-gray-300 hover:bg-primary-900 hover:text-white'
+                  isActive('/books') ? 'bg-white text-black' : 'text-white hover:bg-gray-900 hover:text-white'
                 }`}
                 onClick={() => setSidebarOpen(false)}
               >
@@ -87,9 +111,9 @@ const DashboardLayout: React.FC = () => {
             </li>
             <li>
               <Link
-                to="/members"
+                to="/dashboard/members"
                 className={`flex items-center px-4 py-3 rounded-md transition-colors ${
-                  isActive('/members') ? 'bg-primary-800 text-white' : 'text-gray-300 hover:bg-primary-900 hover:text-white'
+                  isActive('/members') ? 'bg-white text-black' : 'text-white hover:bg-gray-900 hover:text-white'
                 }`}
                 onClick={() => setSidebarOpen(false)}
               >
@@ -99,9 +123,9 @@ const DashboardLayout: React.FC = () => {
             </li>
             <li>
               <Link
-                to="/transactions"
+                to="/dashboard/transactions"
                 className={`flex items-center px-4 py-3 rounded-md transition-colors ${
-                  isActive('/transactions') ? 'bg-primary-800 text-white' : 'text-gray-300 hover:bg-primary-900 hover:text-white'
+                  isActive('/transactions') ? 'bg-white text-black' : 'text-white hover:bg-gray-900 hover:text-white'
                 }`}
                 onClick={() => setSidebarOpen(false)}
               >
@@ -111,9 +135,9 @@ const DashboardLayout: React.FC = () => {
             </li>
             <li>
               <Link
-                to="/reports"
+                to="/dashboard/reports"
                 className={`flex items-center px-4 py-3 rounded-md transition-colors ${
-                  isActive('/reports') ? 'bg-primary-800 text-white' : 'text-gray-300 hover:bg-primary-900 hover:text-white'
+                  isActive('/reports') ? 'bg-white text-black' : 'text-white hover:bg-gray-900 hover:text-white'
                 }`}
                 onClick={() => setSidebarOpen(false)}
               >
@@ -126,9 +150,9 @@ const DashboardLayout: React.FC = () => {
               <>
                 <li>
                   <Link
-                    to="/staff"
+                    to="/dashboard/staff"
                     className={`flex items-center px-4 py-3 rounded-md transition-colors ${
-                      isActive('/staff') ? 'bg-primary-800 text-white' : 'text-gray-300 hover:bg-primary-900 hover:text-white'
+                      isActive('/staff') ? 'bg-white text-black' : 'text-white hover:bg-gray-900 hover:text-white'
                     }`}
                     onClick={() => setSidebarOpen(false)}
                   >
@@ -138,9 +162,9 @@ const DashboardLayout: React.FC = () => {
                 </li>
                 <li>
                   <Link
-                    to="/trash"
+                    to="/dashboard/trash"
                     className={`flex items-center px-4 py-3 rounded-md transition-colors ${
-                      isActive('/trash') ? 'bg-primary-800 text-white' : 'text-gray-300 hover:bg-primary-900 hover:text-white'
+                      isActive('/trash') ? 'bg-white text-black' : 'text-white hover:bg-gray-900 hover:text-white'
                     }`}
                     onClick={() => setSidebarOpen(false)}
                   >
@@ -158,90 +182,83 @@ const DashboardLayout: React.FC = () => {
       <div className="lg:pl-64">
         {/* Header */}
         <header className="bg-white shadow-sm h-16 fixed top-0 right-0 left-0 z-10 lg:left-64">
-          <div className="flex items-center justify-between h-full px-4">
+          <div className="flex items-center h-full px-4">
             <button
               onClick={() => setSidebarOpen(true)}
               className="p-1 rounded-md hover:bg-gray-100 lg:hidden"
             >
               <Menu className="h-6 w-6" />
             </button>
-
-            <div className="flex items-center space-x-4">
-              {/* Notifications */}
-              <div className="relative">
-                <button
-                  onClick={() => setNotificationsOpen(!notificationsOpen)}
-                  className="p-1 rounded-full hover:bg-gray-100 relative"
-                >
-                  <BellIcon className="h-6 w-6" />
-                  <span className="absolute top-0 right-0 block h-2 w-2 rounded-full bg-red-500"></span>
-                </button>
-                {notificationsOpen && (
-                  <div className="absolute right-0 left-auto mt-2 min-w-[320px] w-80 bg-white rounded-md shadow-lg py-1 z-10 border border-gray-200 overflow-visible
-                    sm:right-0 sm:left-auto
-                    left-1/2 -translate-x-1/2 sm:translate-x-0
-                  ">
-                    <div className="px-4 py-2 border-b border-gray-200">
-                      <h3 className="text-sm font-semibold">Notifications</h3>
-                    </div>
-                    <div className="max-h-60 overflow-y-auto">
-                      {notifications.map((notification) => (
-                        <div
-                          key={notification.id}
-                          className="px-4 py-3 hover:bg-gray-50 border-b border-gray-100 last:border-0"
-                        >
-                          <p className="text-sm">{notification.message}</p>
-                          <p className="text-xs text-gray-500 mt-1">{notification.time}</p>
-                        </div>
-                      ))}
-                    </div>
-                    <div className="px-4 py-2 border-t border-gray-200">
-                      <button className="text-sm text-primary-600 hover:text-primary-800 font-medium">
-                        View all notifications
-                      </button>
-                    </div>
+          </div>
+          {/* Profile & Notification fixed at top right */}
+          <div className="fixed top-4 right-8 z-50 flex items-center space-x-4">
+            {/* Notifications */}
+            <div className="relative" ref={notifRef}>
+              <button
+                onClick={() => setNotificationsOpen(!notificationsOpen)}
+                className="p-1 rounded-full hover:bg-gray-100 relative"
+              >
+                <BellIcon className="h-6 w-6" />
+                <span className="absolute top-0 right-0 block h-2 w-2 rounded-full bg-red-500"></span>
+              </button>
+              {notificationsOpen && (
+                <div className="absolute right-0 left-auto mt-2 min-w-[320px] w-80 bg-white rounded-md shadow-lg py-1 z-10 border border-gray-200 overflow-visible transition-none">
+                  <div className="px-4 py-2 border-b border-gray-200">
+                    <h3 className="text-sm font-semibold">Notifications</h3>
                   </div>
-                )}
-              </div>
-              {/* User profile */}
-              <div className="relative">
-                <button
-                  onClick={() => setProfileOpen(!profileOpen)}
-                  className="flex items-center space-x-2 focus:outline-none"
-                >
-                  <div className="flex items-center">
-                    <div className="h-8 w-8 rounded-full bg-primary-600 flex items-center justify-center text-white font-semibold">
-                      {user?.name.charAt(0)}
-                    </div>
-                    <span className="ml-2 text-sm font-medium text-gray-700 hidden md:block">
-                      {user?.name}
-                    </span>
-                    <ChevronDown className="h-4 w-4 ml-1 text-gray-500" />
+                  <div className="max-h-60 overflow-y-auto">
+                    {notifications.map((notification) => (
+                      <div
+                        key={notification.id}
+                        className="px-4 py-3 hover:bg-gray-100 border-b border-gray-100 last:border-0"
+                      >
+                        <p className="text-sm">{notification.message}</p>
+                        <p className="text-xs text-gray-500 mt-1">{notification.time}</p>
+                      </div>
+                    ))}
                   </div>
-                </button>
-                
-                {profileOpen && (
-                  <div className="absolute right-0 left-auto mt-2 min-w-[200px] w-48 bg-white rounded-md shadow-lg py-1 z-10 border border-gray-200 overflow-visible
-                    sm:right-0 sm:left-auto
-                    left-1/2 -translate-x-1/2 sm:translate-x-0
-                  ">
-                    <div className="px-4 py-2 border-b border-gray-200">
-                      <p className="text-sm font-medium">{user?.name}</p>
-                      <p className="text-xs text-gray-500">{user?.email}</p>
-                      <p className="text-xs mt-1 bg-gray-100 rounded px-2 py-0.5 inline-block capitalize">
-                        {user?.role}
-                      </p>
-                    </div>
-                    <button
-                      onClick={handleLogout}
-                      className="flex w-full items-center px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"
-                    >
-                      <LogOut className="h-4 w-4 mr-2" />
-                      Sign out
+                  <div className="px-4 py-2 border-t border-gray-200">
+                    <button className="text-sm text-black hover:text-gray-700 font-medium">
+                      View all notifications
                     </button>
                   </div>
-                )}
-              </div>
+                </div>
+              )}
+            </div>
+            {/* User profile */}
+            <div className="relative" ref={profileRef}>
+              <button
+                onClick={() => setProfileOpen(!profileOpen)}
+                className="flex items-center space-x-2 focus:outline-none"
+              >
+                <div className="flex items-center">
+                  <div className="h-8 w-8 rounded-full bg-black flex items-center justify-center text-white font-semibold">
+                    {user?.name.charAt(0)}
+                  </div>
+                  <span className="ml-2 text-sm font-medium text-black hidden md:block">
+                    {user?.name}
+                  </span>
+                  <ChevronDown className="h-4 w-4 ml-1 text-gray-500" />
+                </div>
+              </button>
+              {profileOpen && (
+                <div className="absolute right-0 left-auto mt-2 min-w-[200px] w-48 bg-white rounded-md shadow-lg py-1 z-10 border border-gray-200 overflow-visible transition-none">
+                  <div className="px-4 py-2 border-b border-gray-200">
+                    <p className="text-sm font-medium">{user?.name}</p>
+                    <p className="text-xs text-gray-500">{user?.email}</p>
+                    <p className="text-xs mt-1 bg-gray-100 rounded px-2 py-0.5 inline-block capitalize">
+                      {user?.role}
+                    </p>
+                  </div>
+                  <button
+                    onClick={handleLogout}
+                    className="flex w-full items-center px-4 py-2 text-sm text-black hover:bg-gray-100"
+                  >
+                    <LogOut className="h-4 w-4 mr-2" />
+                    Sign out
+                  </button>
+                </div>
+              )}
             </div>
           </div>
         </header>
