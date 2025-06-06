@@ -47,6 +47,9 @@ import OverdueReport from './pages/reports/OverdueReport';
 // Trash Pages
 import Trash from './pages/trash/Trash';
 
+// Overdue Page
+import Overdue from './pages/Overdue';
+
 function App() {
   return (
     <AuthProvider>
@@ -83,6 +86,9 @@ function App() {
               {/* Report Routes */}
               <Route path="reports" element={<Reports />} />
               <Route path="reports/overdue" element={<OverdueReport />} />
+              
+              {/* Overdue Route */}
+              <Route path="overdue" element={<Overdue />} />
               
               {/* Admin Routes */}
               <Route path="staff" element={<AdminRoute><Staff /></AdminRoute>} />

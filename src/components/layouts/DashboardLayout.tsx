@@ -2,9 +2,10 @@ import React, { useState, useRef, useEffect } from 'react';
 import { Outlet, Link, useNavigate, useLocation } from 'react-router-dom';
 import { 
   BookOpen, Users, RepeatIcon, UserCog, BarChart3, Trash2, 
-  Menu, X, LogOut, Home, ChevronDown, BellIcon 
+  Menu, X, LogOut, Home, ChevronDown, BellIcon, User 
 } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
+import api from '../../services/api';
 
 const DashboardLayout: React.FC = () => {
   const { user, logout, isAdmin } = useAuth();
@@ -13,6 +14,9 @@ const DashboardLayout: React.FC = () => {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [notificationsOpen, setNotificationsOpen] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
+  const [notifications, setNotifications] = useState<any[]>([]);
+  const [notifLoading, setNotifLoading] = useState(false);
+  const [hasUnread, setHasUnread] = useState(false);
 
   // Tambah ref untuk pop-up
   const notifRef = useRef<HTMLDivElement>(null);
@@ -38,6 +42,28 @@ const DashboardLayout: React.FC = () => {
     };
   }, [notificationsOpen, profileOpen]);
 
+  useEffect(() => {
+    const fetchNotifications = async () => {
+      setNotifLoading(true);
+      try {
+        const { data } = await api.get('/notifications');
+        setNotifications(data.notifications || []);
+        setHasUnread((data.notifications || []).some((n: any) => n.read === false));
+      } catch (e) {
+        setNotifications([]);
+        setHasUnread(false);
+      }
+      setNotifLoading(false);
+    };
+    if (notificationsOpen) {
+      fetchNotifications();
+      // Mark as read saat pop-up dibuka
+      api.patch('/notifications/read-all').then(() => setHasUnread(false));
+    } else {
+      fetchNotifications();
+    }
+  }, [notificationsOpen]);
+
   const handleLogout = () => {
     logout();
     navigate('/login');
@@ -46,13 +72,6 @@ const DashboardLayout: React.FC = () => {
   const isActive = (path: string) => {
     return location.pathname === path || location.pathname.startsWith(`${path}/`);
   };
-
-  // Demo notifications
-  const notifications = [
-    { id: 1, message: "5 books are overdue today", time: "10 min ago" },
-    { id: 2, message: "New member registered", time: "1 hour ago" },
-    { id: 3, message: "Monthly report is ready", time: "3 hours ago" },
-  ];
 
   return (
     <div className="min-h-screen bg-white">
@@ -145,6 +164,19 @@ const DashboardLayout: React.FC = () => {
                 Reports
               </Link>
             </li>
+            {/* Overdue Page */}
+            <li>
+              <Link
+                to="/dashboard/overdue"
+                className={`flex items-center px-4 py-3 rounded-md transition-colors ${
+                  isActive('/overdue') ? 'bg-white text-black' : 'text-white hover:bg-gray-900 hover:text-white'
+                }`}
+                onClick={() => setSidebarOpen(false)}
+              >
+                <RepeatIcon className="h-5 w-5 mr-3" />
+                Overdue
+              </Link>
+            </li>
             
             {isAdmin() && (
               <>
@@ -199,7 +231,9 @@ const DashboardLayout: React.FC = () => {
                 className="p-1 rounded-full hover:bg-gray-100 relative"
               >
                 <BellIcon className="h-6 w-6" />
-                <span className="absolute top-0 right-0 block h-2 w-2 rounded-full bg-red-500"></span>
+                {hasUnread && (
+                  <span className="absolute top-0 right-0 block h-2 w-2 rounded-full bg-red-500"></span>
+                )}
               </button>
               {notificationsOpen && (
                 <div className="absolute right-0 left-auto mt-2 min-w-[320px] w-80 bg-white rounded-md shadow-lg py-1 z-10 border border-gray-200 overflow-visible transition-none">
@@ -207,7 +241,11 @@ const DashboardLayout: React.FC = () => {
                     <h3 className="text-sm font-semibold">Notifications</h3>
                   </div>
                   <div className="max-h-60 overflow-y-auto">
-                    {notifications.map((notification) => (
+                    {notifLoading ? (
+                      <div className="px-4 py-6 text-center text-gray-500">Loading...</div>
+                    ) : notifications.length === 0 ? (
+                      <div className="px-4 py-6 text-center text-gray-500">No notifications</div>
+                    ) : notifications.map((notification) => (
                       <div
                         key={notification.id}
                         className="px-4 py-3 hover:bg-gray-100 border-b border-gray-100 last:border-0"
@@ -232,8 +270,8 @@ const DashboardLayout: React.FC = () => {
                 className="flex items-center space-x-2 focus:outline-none"
               >
                 <div className="flex items-center">
-                  <div className="h-8 w-8 rounded-full bg-black flex items-center justify-center text-white font-semibold">
-                    {user?.name.charAt(0)}
+                  <div className="h-8 w-8 rounded-full bg-black flex items-center justify-center">
+                    <User className="h-5 w-5 text-white" />
                   </div>
                   <span className="ml-2 text-sm font-medium text-black hidden md:block">
                     {user?.name}

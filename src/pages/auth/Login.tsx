@@ -38,7 +38,7 @@ const Login: React.FC = () => {
       <div className="w-full max-w-md p-8 space-y-8 bg-black rounded-lg shadow-lg">
         <button
           type="button"
-          onClick={() => navigate(-1)}
+          onClick={() => navigate('/')}
           className="flex items-center mb-4 text-white hover:text-gray-300"
         >
           <ArrowLeft className="w-5 h-5 mr-2" />
