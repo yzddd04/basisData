@@ -20,7 +20,7 @@ const app = express();
 
 // Middleware
 app.use(cors({
-  origin: 'http://localhost:5173',
+  origin: [process.env.FRONTEND_URL, 'http://localhost:5173'],
   credentials: true
 }));
 app.use(express.json());
@@ -45,21 +45,27 @@ app.use(errorHandler);
 
 const PORT = process.env.PORT || 3000;
 
-async function startServer() {
-  try {
-    await connectToDatabase();
-    app.listen(PORT, () => {
-      console.log(`Server running on port ${PORT}`);
-    });
-  } catch (error) {
-    console.error('Failed to start server:', error);
-    process.exit(1);
+// For local development
+if (process.env.NODE_ENV !== 'production') {
+  async function startServer() {
+    try {
+      await connectToDatabase();
+      app.listen(PORT, () => {
+        console.log(`Server running on port ${PORT}`);
+      });
+    } catch (error) {
+      console.error('Failed to start server:', error);
+      process.exit(1);
+    }
   }
+
+  process.on('SIGINT', async () => {
+    await closeDatabaseConnection();
+    process.exit(0);
+  });
+
+  startServer();
 }
 
-process.on('SIGINT', async () => {
-  await closeDatabaseConnection();
-  process.exit(0);
-});
-
-startServer();
+// For Vercel deployment
+export default app;

@@ -80,7 +80,7 @@ const Books: React.FC = () => {
           <p className="text-gray-500">Manage your library's book collection</p>
         </div>
         <Link
-          to="/books/add"
+          to="/dashboard/books/add"
           className="inline-flex items-center px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-primary-600 hover:bg-primary-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500"
         >
           <PlusCircle className="h-5 w-5 mr-2" />
@@ -144,9 +144,9 @@ const Books: React.FC = () => {
         <>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
             {books.map((book) => (
-              <div key={book._id} className="bg-white rounded-lg shadow-sm hover:shadow-md transition-shadow duration-200 relative">
+              <div key={book._id} className="bg-white rounded-lg shadow-sm border border-gray-200 hover:border-primary-500 hover:ring-2 hover:ring-primary-200 transition-shadow duration-200 relative active:scale-95">
                 <Link
-                  to={`/books/${book._id}`}
+                  to={`/dashboard/books/${book._id}`}
                   className="block"
                 >
                   <div className="aspect-[3/4] relative overflow-hidden rounded-t-lg">
@@ -225,7 +225,7 @@ const Books: React.FC = () => {
           </p>
           <div className="mt-6">
             <Link
-              to="/books/add"
+              to="/dashboard/books/add"
               className="inline-flex items-center px-4 py-2 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-primary-600 hover:bg-primary-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500"
             >
               <PlusCircle className="h-5 w-5 mr-2" />

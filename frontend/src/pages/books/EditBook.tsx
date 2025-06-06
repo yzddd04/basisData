@@ -43,7 +43,7 @@ const EditBook: React.FC = () => {
       setFormData(data);
     } catch (error) {
       toast.error('Failed to fetch book details');
-      navigate('/books');
+      navigate('/dashboard/books');
     } finally {
       setLoading(false);
     }
@@ -64,7 +64,7 @@ const EditBook: React.FC = () => {
       setSaving(true);
       await api.put(`/books/${id}`, formData);
       toast.success('Book updated successfully');
-      navigate(`/books/${id}`);
+      navigate(`/dashboard/books/${id}`);
     } catch (error: any) {
       toast.error(error.response?.data?.message || 'Failed to update book');
     } finally {
@@ -259,7 +259,7 @@ const EditBook: React.FC = () => {
             <div className="flex justify-end space-x-3">
               <button
                 type="button"
-                onClick={() => navigate(`/books/${id}`)}
+                onClick={() => navigate(`/dashboard/books/${id}`)}
                 className="inline-flex items-center px-4 py-2 border border-gray-300 shadow-sm text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500"
               >
                 Cancel

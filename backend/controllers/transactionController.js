@@ -324,3 +324,31 @@ export const checkOverdue = async (req, res) => {
     res.status(500).json({ message: error.message });
   }
 };
+
+// @desc    Get overdue transactions
+// @route   GET /api/transactions/overdue
+// @access  Private (sementara tanpa protect)
+export const getOverdueTransactions = async (req, res) => {
+  try {
+    const { search = '' } = req.query;
+    const db = await connectToDatabase();
+    const transactionsCollection = db.collection('transactions');
+    const query = {
+      status: 'overdue',
+      isDeleted: false,
+    };
+    if (search) {
+      // Search by book title or member name (jika perlu)
+      // Untuk contoh, hanya filter by book title
+      const booksCollection = db.collection('books');
+      const books = await booksCollection.find({ title: { $regex: search, $options: 'i' } }).toArray();
+      const bookIds = books.map(b => b._id.toString());
+      query.book = { $in: bookIds.map(id => new ObjectId(id)) };
+    }
+    const overdueTransactions = await transactionsCollection.find(query).toArray();
+    const populated = await Promise.all(overdueTransactions.map(t => populateTransaction(t, db)));
+    res.json({ transactions: populated });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+};

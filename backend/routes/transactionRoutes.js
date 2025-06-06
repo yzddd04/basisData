@@ -7,6 +7,7 @@ import {
   payFine,
   deleteTransaction,
   checkOverdue,
+  getOverdueTransactions,
 } from '../controllers/transactionController.js';
 import { protect } from '../middleware/authMiddleware.js';
 
@@ -25,5 +26,7 @@ router.route('/:id')
 
 router.put('/:id/return', returnBook);
 router.put('/:id/pay-fine', payFine);
+
+router.get('/overdue', getOverdueTransactions);
 
 export default router;
