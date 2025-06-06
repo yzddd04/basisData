@@ -1,5 +1,6 @@
 import jwt from 'jsonwebtoken';
-import Staff from '../models/staffModel.js';
+import { Staff } from '../models/staffModel.js';
+import { connectToDatabase } from '../config/db.js';
 
 // Generate JWT
 const generateToken = (id) => {
@@ -14,17 +15,27 @@ const generateToken = (id) => {
 export const login = async (req, res) => {
   try {
     const { email, password } = req.body;
+    const db = await connectToDatabase();
+    const staffCollection = db.collection('staff');
 
     // Check for staff email
-    const staff = await Staff.findOne({ email, isDeleted: false });
+    const staffData = await staffCollection.findOne({ email, isDeleted: false });
+    
+    if (!staffData) {
+      res.status(401);
+      throw new Error('Invalid email or password');
+    }
 
-    if (staff && (await staff.matchPassword(password))) {
+    const staff = new Staff(staffData);
+    const isMatch = await staff.matchPassword(password);
+
+    if (isMatch) {
       res.json({
-        _id: staff._id,
+        _id: staffData._id,
         name: staff.name,
         email: staff.email,
         role: staff.role,
-        token: generateToken(staff._id),
+        token: generateToken(staffData._id),
       });
     } else {
       res.status(401);
@@ -40,10 +51,14 @@ export const login = async (req, res) => {
 // @access  Private
 export const getProfile = async (req, res) => {
   try {
-    const staff = await Staff.findById(req.staff._id).select('-password');
+    const db = await connectToDatabase();
+    const staffCollection = db.collection('staff');
     
-    if (staff) {
-      res.json(staff);
+    const staffData = await staffCollection.findOne({ _id: req.staff._id });
+    
+    if (staffData) {
+      const staff = new Staff(staffData);
+      res.json(staff.toJSON());
     } else {
       res.status(404);
       throw new Error('Staff not found');
@@ -59,31 +74,36 @@ export const getProfile = async (req, res) => {
 export const registerStaff = async (req, res) => {
   try {
     const { name, email, password, phone } = req.body;
+    const db = await connectToDatabase();
+    const staffCollection = db.collection('staff');
 
     // Check if staff already exists
-    const staffExists = await Staff.findOne({ email });
+    const staffExists = await staffCollection.findOne({ email });
 
     if (staffExists) {
       res.status(400);
       throw new Error('Email already registered');
     }
 
-    // Create staff with default role as librarian
-    const staff = await Staff.create({
+    // Create new staff
+    const hashedPassword = await Staff.hashPassword(password);
+    const staff = new Staff({
       name,
       email,
-      password,
+      password: hashedPassword,
       phone,
       role: 'librarian', // Default role for public registration
     });
 
-    if (staff) {
+    const result = await staffCollection.insertOne(staff);
+
+    if (result.acknowledged) {
       res.status(201).json({
-        _id: staff._id,
+        _id: result.insertedId,
         name: staff.name,
         email: staff.email,
         role: staff.role,
-        token: generateToken(staff._id),
+        token: generateToken(result.insertedId),
       });
     } else {
       res.status(400);

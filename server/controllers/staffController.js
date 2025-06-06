@@ -1,4 +1,6 @@
-import Staff from '../models/staffModel.js';
+import { connectToDatabase } from '../config/db.js';
+import { ObjectId } from 'mongodb';
+import bcrypt from 'bcryptjs';
 import Trash from '../models/trashModel.js';
 
 // @desc    Get all staff
@@ -7,6 +9,8 @@ import Trash from '../models/trashModel.js';
 export const getStaff = async (req, res) => {
   try {
     const { search, role, page = 1, limit = 10 } = req.query;
+    const db = await connectToDatabase();
+    const staffCollection = db.collection('staff');
     const query = {};
 
     // Search functionality
@@ -23,20 +27,21 @@ export const getStaff = async (req, res) => {
     }
 
     // Pagination
-    const skip = (page - 1) * limit;
+    const skip = (parseInt(page) - 1) * parseInt(limit);
 
-    const staff = await Staff.find(query)
-      .select('-password')
-      .limit(limit)
+    const staff = await staffCollection
+      .find(query, { projection: { password: 0 } })
+      .limit(parseInt(limit))
       .skip(skip)
-      .sort({ createdAt: -1 });
+      .sort({ createdAt: -1 })
+      .toArray();
 
-    const total = await Staff.countDocuments(query);
+    const total = await staffCollection.countDocuments(query);
 
     res.json({
       staff,
-      currentPage: page,
-      totalPages: Math.ceil(total / limit),
+      currentPage: parseInt(page),
+      totalPages: Math.ceil(total / parseInt(limit)),
       total,
     });
   } catch (error) {
@@ -49,7 +54,9 @@ export const getStaff = async (req, res) => {
 // @access  Private/Admin
 export const getStaffById = async (req, res) => {
   try {
-    const staff = await Staff.findOne({ _id: req.params.id }).select('-password');
+    const db = await connectToDatabase();
+    const staffCollection = db.collection('staff');
+    const staff = await staffCollection.findOne({ _id: new ObjectId(req.params.id) }, { projection: { password: 0 } });
 
     if (staff) {
       res.json(staff);
@@ -67,20 +74,16 @@ export const getStaffById = async (req, res) => {
 // @access  Private/Admin
 export const updateStaff = async (req, res) => {
   try {
-    const staff = await Staff.findOne({
-      _id: req.params.id,
-      isDeleted: false,
-    });
+    const db = await connectToDatabase();
+    const staffCollection = db.collection('staff');
+    const staff = await staffCollection.findOne({ _id: new ObjectId(req.params.id), isDeleted: false });
 
     if (staff) {
       const { name, email, role, phone, password } = req.body;
 
       // Check if another staff has the same email
       if (email && email !== staff.email) {
-        const staffWithEmail = await Staff.findOne({
-          email,
-          isDeleted: false,
-        });
+        const staffWithEmail = await staffCollection.findOne({ email, isDeleted: false });
         if (staffWithEmail) {
           res.status(400);
           throw new Error('Staff with this email already exists');
@@ -88,17 +91,26 @@ export const updateStaff = async (req, res) => {
       }
 
       // Update fields
-      staff.name = name || staff.name;
-      staff.email = email || staff.email;
-      staff.role = role || staff.role;
-      staff.phone = phone || staff.phone;
+      const updateFields = {
+        name: name || staff.name,
+        email: email || staff.email,
+        role: role || staff.role,
+        phone: phone || staff.phone,
+        updatedAt: new Date(),
+      };
 
       // Only update password if provided
       if (password) {
-        staff.password = password;
+        const salt = await bcrypt.genSalt(10);
+        updateFields.password = await bcrypt.hash(password, salt);
       }
 
-      const updatedStaff = await staff.save();
+      await staffCollection.updateOne(
+        { _id: new ObjectId(req.params.id) },
+        { $set: updateFields }
+      );
+
+      const updatedStaff = await staffCollection.findOne({ _id: new ObjectId(req.params.id) }, { projection: { password: 0 } });
 
       res.json({
         _id: updatedStaff._id,
@@ -121,18 +133,15 @@ export const updateStaff = async (req, res) => {
 // @access  Private/Admin
 export const deleteStaff = async (req, res) => {
   try {
-    const staff = await Staff.findOne({
-      _id: req.params.id,
-      isDeleted: false,
-    });
+    const db = await connectToDatabase();
+    const staffCollection = db.collection('staff');
+    const trashesCollection = db.collection('trashes');
+    const staff = await staffCollection.findOne({ _id: new ObjectId(req.params.id), isDeleted: false });
 
     if (staff) {
       // Don't allow deleting the last admin
       if (staff.role === 'admin') {
-        const adminCount = await Staff.countDocuments({
-          role: 'admin',
-          isDeleted: false,
-        });
+        const adminCount = await staffCollection.countDocuments({ role: 'admin', isDeleted: false });
 
         if (adminCount <= 1) {
           res.status(400);
@@ -141,17 +150,19 @@ export const deleteStaff = async (req, res) => {
       }
 
       // Soft delete
-      staff.isDeleted = true;
-      staff.deletedAt = Date.now();
-      await staff.save();
+      await staffCollection.updateOne(
+        { _id: new ObjectId(req.params.id) },
+        { $set: { isDeleted: true, deletedAt: new Date() } }
+      );
 
       // Add to trash
       try {
-        await Trash.create({
+        await trashesCollection.insertOne({
           modelName: 'Staff',
           documentId: staff._id,
-          documentData: staff.toObject(),
+          documentData: staff,
           deletedBy: req.staff ? req.staff._id : null,
+          deletedAt: new Date(),
         });
       } catch (err) {
         console.error('Failed to add staff to trash:', err);

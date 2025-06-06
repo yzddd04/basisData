@@ -1,7 +1,22 @@
-import Transaction from '../models/transactionModel.js';
-import Book from '../models/bookModel.js';
-import Member from '../models/memberModel.js';
-import Trash from '../models/trashModel.js';
+import { connectToDatabase } from '../config/db.js';
+import { ObjectId } from 'mongodb';
+
+// Helper untuk populate book/member/staff
+async function populateTransaction(transaction, db) {
+  if (!transaction) return null;
+  const booksCollection = db.collection('books');
+  const membersCollection = db.collection('members');
+  const staffsCollection = db.collection('staff');
+  const book = transaction.book ? await booksCollection.findOne({ _id: new ObjectId(transaction.book) }) : null;
+  const member = transaction.member ? await membersCollection.findOne({ _id: new ObjectId(transaction.member) }) : null;
+  const staff = transaction.staff ? await staffsCollection.findOne({ _id: new ObjectId(transaction.staff) }) : null;
+  return {
+    ...transaction,
+    book,
+    member,
+    staff,
+  };
+}
 
 // @desc    Get all transactions
 // @route   GET /api/transactions
@@ -9,6 +24,8 @@ import Trash from '../models/trashModel.js';
 export const getTransactions = async (req, res) => {
   try {
     const { status, startDate, endDate, page = 1, limit = 10 } = req.query;
+    const db = await connectToDatabase();
+    const transactionsCollection = db.collection('transactions');
     const query = { isDeleted: false };
 
     // Filter by status
@@ -29,22 +46,22 @@ export const getTransactions = async (req, res) => {
     }
 
     // Pagination
-    const skip = (page - 1) * limit;
-
-    const transactions = await Transaction.find(query)
-      .populate('book', 'title author isbn')
-      .populate('member', 'name email')
-      .populate('staff', 'name')
-      .limit(limit)
+    const skip = (parseInt(page) - 1) * parseInt(limit);
+    const transactions = await transactionsCollection
+      .find(query)
+      .limit(parseInt(limit))
       .skip(skip)
-      .sort({ issueDate: -1 });
+      .sort({ issueDate: -1 })
+      .toArray();
 
-    const total = await Transaction.countDocuments(query);
+    // Populate
+    const populated = await Promise.all(transactions.map(t => populateTransaction(t, db)));
+    const total = await transactionsCollection.countDocuments(query);
 
     res.json({
-      transactions,
-      currentPage: page,
-      totalPages: Math.ceil(total / limit),
+      transactions: populated,
+      currentPage: parseInt(page),
+      totalPages: Math.ceil(total / parseInt(limit)),
       total,
     });
   } catch (error) {
@@ -57,16 +74,15 @@ export const getTransactions = async (req, res) => {
 // @access  Private
 export const getTransactionById = async (req, res) => {
   try {
-    const transaction = await Transaction.findOne({
-      _id: req.params.id,
+    const db = await connectToDatabase();
+    const transactionsCollection = db.collection('transactions');
+    const transaction = await transactionsCollection.findOne({
+      _id: new ObjectId(req.params.id),
       isDeleted: false,
-    })
-      .populate('book', 'title author isbn coverImage')
-      .populate('member', 'name email phone')
-      .populate('staff', 'name');
-
-    if (transaction) {
-      res.json(transaction);
+    });
+    const populated = await populateTransaction(transaction, db);
+    if (populated) {
+      res.json(populated);
     } else {
       res.status(404);
       throw new Error('Transaction not found');
@@ -80,72 +96,70 @@ export const getTransactionById = async (req, res) => {
 // @route   POST /api/transactions
 // @access  Private
 export const createTransaction = async (req, res) => {
-  console.log('CREATE TRANSACTION BODY:', req.body);
   try {
     const { bookId, memberId, dueDate } = req.body;
+    const db = await connectToDatabase();
+    const booksCollection = db.collection('books');
+    const membersCollection = db.collection('members');
+    const transactionsCollection = db.collection('transactions');
+    const staffsCollection = db.collection('staff');
 
     // Check if book exists and is available
-    const book = await Book.findOne({ _id: bookId, isDeleted: false });
-    
+    const book = await booksCollection.findOne({ _id: new ObjectId(bookId), isDeleted: false });
     if (!book) {
       res.status(404);
       throw new Error('Book not found');
     }
-    
     if (book.availableCopies <= 0) {
       res.status(400);
       throw new Error('Book is not available for borrowing');
     }
 
     // Check if member exists and is eligible
-    const member = await Member.findOne({ _id: memberId, isDeleted: false });
-    
+    const member = await membersCollection.findOne({ _id: new ObjectId(memberId), isDeleted: false });
     if (!member) {
       res.status(404);
       throw new Error('Member not found');
     }
-    
-    // Check if membership is valid
     if (new Date(member.membershipExpiry) < new Date()) {
       res.status(400);
       throw new Error('Membership has expired');
     }
-    
-    // Check if member has unpaid fines
     if (member.fines > 0) {
       res.status(400);
       throw new Error('Member has unpaid fines. Please clear dues before borrowing');
     }
 
     // Gunakan staff dummy jika req.staff tidak ada (karena protect dibypass)
-    const DUMMY_STAFF_ID = '6840753a1b0d986330e4f6f7'; // Ganti dengan _id staff asli dari koleksi staff jika ada
+    const DUMMY_STAFF_ID = '6840753a1b0d986330e4f6f7';
     const staffId = req.staff?._id || DUMMY_STAFF_ID;
-    const transaction = await Transaction.create({
+    const transaction = {
       book: bookId,
       member: memberId,
       staff: staffId,
-      dueDate: dueDate || new Date(Date.now() + 14 * 24 * 60 * 60 * 1000), // Default 14 days
+      dueDate: dueDate ? new Date(dueDate) : new Date(Date.now() + 14 * 24 * 60 * 60 * 1000),
       status: 'borrowed',
-    });
+      isDeleted: false,
+      issueDate: new Date(),
+    };
+    const result = await transactionsCollection.insertOne(transaction);
 
     // Update book available copies
-    book.availableCopies -= 1;
-    await book.save();
+    await booksCollection.updateOne(
+      { _id: new ObjectId(bookId) },
+      { $inc: { availableCopies: -1 } }
+    );
 
     // Update member borrowing stats
-    member.currentBorrowings += 1;
-    member.totalBorrowings += 1;
-    await member.save();
+    await membersCollection.updateOne(
+      { _id: new ObjectId(memberId) },
+      { $inc: { currentBorrowings: 1, totalBorrowings: 1 } }
+    );
 
-    // Populate response data
-    const populatedTransaction = await Transaction.findById(transaction._id)
-      .populate('book', 'title author isbn')
-      .populate('member', 'name email')
-      .populate('staff', 'name');
-
-    res.status(201).json(populatedTransaction);
+    const inserted = await transactionsCollection.findOne({ _id: result.insertedId });
+    const populated = await populateTransaction(inserted, db);
+    res.status(201).json(populated);
   } catch (error) {
-    console.error('CREATE TRANSACTION ERROR:', error);
     res.status(400).json({ message: error.message });
   }
 };
@@ -155,8 +169,12 @@ export const createTransaction = async (req, res) => {
 // @access  Private
 export const returnBook = async (req, res) => {
   try {
-    const transaction = await Transaction.findOne({
-      _id: req.params.id,
+    const db = await connectToDatabase();
+    const transactionsCollection = db.collection('transactions');
+    const booksCollection = db.collection('books');
+    const membersCollection = db.collection('members');
+    const transaction = await transactionsCollection.findOne({
+      _id: new ObjectId(req.params.id),
       isDeleted: false,
     });
 
@@ -164,7 +182,6 @@ export const returnBook = async (req, res) => {
       res.status(404);
       throw new Error('Transaction not found');
     }
-
     if (transaction.status === 'returned') {
       res.status(400);
       throw new Error('Book has already been returned');
@@ -173,45 +190,38 @@ export const returnBook = async (req, res) => {
     // Calculate fine if book is returned late
     const currentDate = new Date();
     let fine = 0;
-
     if (currentDate > transaction.dueDate) {
-      // Calculate days overdue
       const dueDate = new Date(transaction.dueDate);
       const timeDiff = currentDate.getTime() - dueDate.getTime();
       const daysLate = Math.ceil(timeDiff / (1000 * 3600 * 24));
-      
-      // Apply fine rate ($0.50 per day)
       fine = daysLate * 0.5;
     }
 
     // Update transaction
-    transaction.returnDate = currentDate;
-    transaction.fine = fine;
-    transaction.status = 'returned';
-    await transaction.save();
+    await transactionsCollection.updateOne(
+      { _id: new ObjectId(req.params.id) },
+      { $set: { returnDate: currentDate, fine, status: 'returned' } }
+    );
 
     // Update book available copies
-    const book = await Book.findById(transaction.book);
-    book.availableCopies += 1;
-    await book.save();
+    await booksCollection.updateOne(
+      { _id: new ObjectId(transaction.book) },
+      { $inc: { availableCopies: 1 } }
+    );
 
     // Update member stats and add fine if applicable
-    const member = await Member.findById(transaction.member);
-    member.currentBorrowings -= 1;
-    
+    const memberUpdate = { $inc: { currentBorrowings: -1 } };
     if (fine > 0) {
-      member.fines += fine;
+      memberUpdate.$inc.fines = fine;
     }
-    
-    await member.save();
+    await membersCollection.updateOne(
+      { _id: new ObjectId(transaction.member) },
+      memberUpdate
+    );
 
-    // Populate response data
-    const populatedTransaction = await Transaction.findById(transaction._id)
-      .populate('book', 'title author isbn')
-      .populate('member', 'name email')
-      .populate('staff', 'name');
-
-    res.json(populatedTransaction);
+    const updated = await transactionsCollection.findOne({ _id: new ObjectId(req.params.id) });
+    const populated = await populateTransaction(updated, db);
+    res.json(populated);
   } catch (error) {
     res.status(400).json({ message: error.message });
   }
@@ -222,111 +232,94 @@ export const returnBook = async (req, res) => {
 // @access  Private
 export const payFine = async (req, res) => {
   try {
-    const transaction = await Transaction.findOne({
-      _id: req.params.id,
+    const db = await connectToDatabase();
+    const transactionsCollection = db.collection('transactions');
+    const membersCollection = db.collection('members');
+    const transaction = await transactionsCollection.findOne({
+      _id: new ObjectId(req.params.id),
       isDeleted: false,
     });
-
     if (!transaction) {
       res.status(404);
       throw new Error('Transaction not found');
     }
-
     if (transaction.fine <= 0) {
       res.status(400);
       throw new Error('No fine to pay for this transaction');
     }
-
     const { amountPaid } = req.body;
-    
     if (!amountPaid || amountPaid <= 0) {
       res.status(400);
       throw new Error('Invalid amount paid');
     }
-
     // Get member to update their total fines
-    const member = await Member.findById(transaction.member);
-    
-    if (!member) {
-      res.status(404);
-      throw new Error('Member not found');
-    }
-
-    // Update transaction and member
-    const finePaid = Math.min(transaction.fine, amountPaid);
-    transaction.fine -= finePaid;
-    await transaction.save();
-    
-    member.fines = Math.max(0, member.fines - finePaid);
-    await member.save();
-
-    res.json({
-      message: `Payment of $${finePaid.toFixed(2)} received successfully`,
-      remainingFine: transaction.fine,
-      transactionId: transaction._id,
-    });
+    await membersCollection.updateOne(
+      { _id: new ObjectId(transaction.member) },
+      { $inc: { fines: -amountPaid } }
+    );
+    // Update transaction
+    await transactionsCollection.updateOne(
+      { _id: new ObjectId(req.params.id) },
+      { $set: { fine: Math.max(0, transaction.fine - amountPaid) } }
+    );
+    const updated = await transactionsCollection.findOne({ _id: new ObjectId(req.params.id) });
+    const populated = await populateTransaction(updated, db);
+    res.json(populated);
   } catch (error) {
     res.status(400).json({ message: error.message });
   }
 };
 
-// @desc    Delete a transaction (soft delete)
+// @desc    Delete transaction (soft delete)
 // @route   DELETE /api/transactions/:id
 // @access  Private
 export const deleteTransaction = async (req, res) => {
   try {
-    const transaction = await Transaction.findOne({
-      _id: req.params.id,
+    const db = await connectToDatabase();
+    const transactionsCollection = db.collection('transactions');
+    const trashesCollection = db.collection('trashes');
+    const transaction = await transactionsCollection.findOne({
+      _id: new ObjectId(req.params.id),
       isDeleted: false,
     });
-
-    if (transaction) {
-      // Soft delete
-      transaction.isDeleted = true;
-      transaction.deletedAt = Date.now();
-      await transaction.save();
-
-      // Add to trash
-      await Trash.create({
-        modelName: 'Transaction',
-        documentId: transaction._id,
-        documentData: transaction.toObject(),
-        deletedBy: req.staff._id,
-      });
-
-      res.json({ message: 'Transaction removed' });
-    } else {
+    if (!transaction) {
       res.status(404);
       throw new Error('Transaction not found');
     }
+    await transactionsCollection.updateOne(
+      { _id: new ObjectId(req.params.id) },
+      { $set: { isDeleted: true, deletedAt: new Date() } }
+    );
+    await trashesCollection.insertOne({
+      modelName: 'Transaction',
+      documentId: transaction._id,
+      documentData: transaction,
+      deletedBy: req.staff ? req.staff._id : null,
+      deletedAt: new Date(),
+    });
+    res.json({ message: 'Transaction removed' });
   } catch (error) {
-    res.status(404).json({ message: error.message });
+    res.status(400).json({ message: error.message });
   }
 };
 
-// @desc    Check for overdue books and update status
-// @route   GET /api/transactions/check-overdue
+// @desc    Check overdue transactions
+// @route   POST /api/transactions/check-overdue
 // @access  Private
 export const checkOverdue = async (req, res) => {
   try {
-    const currentDate = new Date();
-    
-    // Find all borrowed transactions that are overdue
-    const overdueTransactions = await Transaction.find({
-      status: 'borrowed',
-      dueDate: { $lt: currentDate },
-      isDeleted: false,
-    });
-
-    // Update status to overdue
-    for (const transaction of overdueTransactions) {
-      transaction.status = 'overdue';
-      await transaction.save();
-    }
-
-    res.json({
-      message: `${overdueTransactions.length} transactions marked as overdue`,
-    });
+    const db = await connectToDatabase();
+    const transactionsCollection = db.collection('transactions');
+    const now = new Date();
+    const result = await transactionsCollection.updateMany(
+      {
+        status: 'borrowed',
+        dueDate: { $lt: now },
+        isDeleted: false,
+      },
+      { $set: { status: 'overdue' } }
+    );
+    res.json({ message: `${result.modifiedCount} transactions marked as overdue` });
   } catch (error) {
     res.status(500).json({ message: error.message });
   }

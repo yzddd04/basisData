@@ -2,7 +2,7 @@ import express from 'express';
 import cors from 'cors';
 import dotenv from 'dotenv';
 import morgan from 'morgan';
-import connectDB from './config/db.js';
+import { connectToDatabase, closeDatabaseConnection } from './config/db.js';
 import bookRoutes from './routes/bookRoutes.js';
 import memberRoutes from './routes/memberRoutes.js';
 import staffRoutes from './routes/staffRoutes.js';
@@ -15,9 +15,6 @@ import { errorHandler } from './middleware/errorMiddleware.js';
 
 // Load env vars
 dotenv.config();
-
-// Connect to database
-connectDB();
 
 const app = express();
 
@@ -48,6 +45,21 @@ app.use(errorHandler);
 
 const PORT = process.env.PORT || 3000;
 
-app.listen(PORT, () => {
-  console.log(`Server running on port ${PORT}`);
+async function startServer() {
+  try {
+    await connectToDatabase();
+    app.listen(PORT, () => {
+      console.log(`Server running on port ${PORT}`);
+    });
+  } catch (error) {
+    console.error('Failed to start server:', error);
+    process.exit(1);
+  }
+}
+
+process.on('SIGINT', async () => {
+  await closeDatabaseConnection();
+  process.exit(0);
 });
+
+startServer();

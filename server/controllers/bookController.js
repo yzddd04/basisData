@@ -1,5 +1,5 @@
-import Book from '../models/bookModel.js';
-import Trash from '../models/trashModel.js';
+import { connectToDatabase } from '../config/db.js';
+import { ObjectId } from 'mongodb';
 
 // @desc    Get all books
 // @route   GET /api/books
@@ -7,7 +7,9 @@ import Trash from '../models/trashModel.js';
 export const getBooks = async (req, res) => {
   try {
     const { search, genre, page = 1, limit = 10 } = req.query;
-    const query = { isDeleted: false };
+    const db = await connectToDatabase();
+    const booksCollection = db.collection('books');
+    const query = { $or: [ { isDeleted: false }, { isDeleted: { $exists: false } } ] };
 
     // Search functionality
     if (search) {
@@ -20,19 +22,20 @@ export const getBooks = async (req, res) => {
     }
 
     // Pagination
-    const skip = (page - 1) * limit;
-
-    const books = await Book.find(query)
-      .limit(limit)
+    const skip = (parseInt(page) - 1) * parseInt(limit);
+    const books = await booksCollection
+      .find(query)
+      .limit(parseInt(limit))
       .skip(skip)
-      .sort({ createdAt: -1 });
+      .sort({ createdAt: -1 })
+      .toArray();
 
-    const total = await Book.countDocuments(query);
+    const total = await booksCollection.countDocuments(query);
 
     res.json({
       books,
-      currentPage: page,
-      totalPages: Math.ceil(total / limit),
+      currentPage: parseInt(page),
+      totalPages: Math.ceil(total / parseInt(limit)),
       total,
     });
   } catch (error) {
@@ -45,7 +48,9 @@ export const getBooks = async (req, res) => {
 // @access  Private
 export const getBookById = async (req, res) => {
   try {
-    const book = await Book.findOne({ _id: req.params.id, isDeleted: false });
+    const db = await connectToDatabase();
+    const booksCollection = db.collection('books');
+    const book = await booksCollection.findOne({ _id: new ObjectId(req.params.id), isDeleted: false });
 
     if (book) {
       res.json(book);
@@ -74,16 +79,18 @@ export const createBook = async (req, res) => {
       coverImage,
       copies,
     } = req.body;
+    const db = await connectToDatabase();
+    const booksCollection = db.collection('books');
 
     // Check if book with ISBN already exists
-    const bookExists = await Book.findOne({ isbn, isDeleted: false });
+    const bookExists = await booksCollection.findOne({ isbn, isDeleted: false });
 
     if (bookExists) {
       res.status(400);
       throw new Error('Book with this ISBN already exists');
     }
 
-    const book = await Book.create({
+    const book = {
       title,
       author,
       isbn,
@@ -94,9 +101,13 @@ export const createBook = async (req, res) => {
       coverImage,
       copies,
       availableCopies: copies,
-    });
+      isDeleted: false,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    };
 
-    res.status(201).json(book);
+    const result = await booksCollection.insertOne(book);
+    res.status(201).json({ ...book, _id: result.insertedId });
   } catch (error) {
     res.status(400).json({ message: error.message });
   }
@@ -107,7 +118,9 @@ export const createBook = async (req, res) => {
 // @access  Private
 export const updateBook = async (req, res) => {
   try {
-    const book = await Book.findOne({ _id: req.params.id, isDeleted: false });
+    const db = await connectToDatabase();
+    const booksCollection = db.collection('books');
+    const book = await booksCollection.findOne({ _id: new ObjectId(req.params.id), isDeleted: false });
 
     if (book) {
       const {
@@ -124,7 +137,7 @@ export const updateBook = async (req, res) => {
 
       // Check if another book has the same ISBN
       if (isbn && isbn !== book.isbn) {
-        const bookWithIsbn = await Book.findOne({ isbn, isDeleted: false });
+        const bookWithIsbn = await booksCollection.findOne({ isbn, isDeleted: false });
         if (bookWithIsbn) {
           res.status(400);
           throw new Error('Book with this ISBN already exists');
@@ -132,23 +145,30 @@ export const updateBook = async (req, res) => {
       }
 
       // Update fields
-      book.title = title || book.title;
-      book.author = author || book.author;
-      book.isbn = isbn || book.isbn;
-      book.publisher = publisher || book.publisher;
-      book.publicationYear = publicationYear || book.publicationYear;
-      book.genre = genre || book.genre;
-      book.description = description || book.description;
-      book.coverImage = coverImage || book.coverImage;
+      const updateFields = {
+        title: title || book.title,
+        author: author || book.author,
+        isbn: isbn || book.isbn,
+        publisher: publisher || book.publisher,
+        publicationYear: publicationYear || book.publicationYear,
+        genre: genre || book.genre,
+        description: description || book.description,
+        coverImage: coverImage || book.coverImage,
+        updatedAt: new Date(),
+      };
 
       // Handle copies update
       if (copies !== undefined) {
         const copiesDiff = copies - book.copies;
-        book.copies = copies;
-        book.availableCopies = Math.max(0, book.availableCopies + copiesDiff);
+        updateFields.copies = copies;
+        updateFields.availableCopies = Math.max(0, book.availableCopies + copiesDiff);
       }
 
-      const updatedBook = await book.save();
+      await booksCollection.updateOne(
+        { _id: new ObjectId(req.params.id) },
+        { $set: updateFields }
+      );
+      const updatedBook = await booksCollection.findOne({ _id: new ObjectId(req.params.id) });
       res.json(updatedBook);
     } else {
       res.status(404);
@@ -164,20 +184,25 @@ export const updateBook = async (req, res) => {
 // @access  Private
 export const deleteBook = async (req, res) => {
   try {
-    const book = await Book.findOne({ _id: req.params.id, isDeleted: false });
+    const db = await connectToDatabase();
+    const booksCollection = db.collection('books');
+    const trashesCollection = db.collection('trashes');
+    const book = await booksCollection.findOne({ _id: new ObjectId(req.params.id), isDeleted: false });
 
     if (book) {
       // Soft delete
-      book.isDeleted = true;
-      book.deletedAt = Date.now();
-      await book.save();
+      await booksCollection.updateOne(
+        { _id: new ObjectId(req.params.id) },
+        { $set: { isDeleted: true, deletedAt: new Date() } }
+      );
 
       // Add to trash
-      await Trash.create({
+      await trashesCollection.insertOne({
         modelName: 'Book',
         documentId: book._id,
-        documentData: book.toObject(),
-        deletedBy: req.staff._id,
+        documentData: book,
+        deletedBy: req.staff?._id || null,
+        deletedAt: new Date(),
       });
 
       res.json({ message: 'Book removed' });
@@ -195,7 +220,9 @@ export const deleteBook = async (req, res) => {
 // @access  Private
 export const getBookGenres = async (req, res) => {
   try {
-    const genres = await Book.distinct('genre', { isDeleted: false });
+    const db = await connectToDatabase();
+    const booksCollection = db.collection('books');
+    const genres = await booksCollection.distinct('genre', { isDeleted: false });
     res.json(genres);
   } catch (error) {
     res.status(500).json({ message: error.message });

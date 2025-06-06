@@ -1,6 +1,5 @@
-import Transaction from '../models/transactionModel.js';
-import Book from '../models/bookModel.js';
-import Member from '../models/memberModel.js';
+import { connectToDatabase } from '../config/db.js';
+import { ObjectId } from 'mongodb';
 
 // @desc    Get popular books
 // @route   GET /api/reports/popular-books
@@ -8,11 +7,11 @@ import Member from '../models/memberModel.js';
 export const getPopularBooks = async (req, res) => {
   try {
     const { limit = 10, period } = req.query;
-    
+    const db = await connectToDatabase();
+    const transactionsCollection = db.collection('transactions');
     // Create date filter based on period
     let dateFilter = {};
     const currentDate = new Date();
-    
     if (period === 'week') {
       const lastWeek = new Date(currentDate.getTime() - 7 * 24 * 60 * 60 * 1000);
       dateFilter = { issueDate: { $gte: lastWeek } };
@@ -23,9 +22,8 @@ export const getPopularBooks = async (req, res) => {
       const lastYear = new Date(currentDate.getTime() - 365 * 24 * 60 * 60 * 1000);
       dateFilter = { issueDate: { $gte: lastYear } };
     }
-
     // Aggregate popular books
-    const popularBooks = await Transaction.aggregate([
+    const popularBooks = await transactionsCollection.aggregate([
       { $match: { isDeleted: false, ...dateFilter } },
       { $group: { _id: '$book', count: { $sum: 1 } } },
       { $sort: { count: -1 } },
@@ -50,8 +48,7 @@ export const getPopularBooks = async (req, res) => {
           borrowCount: '$count',
         },
       },
-    ]);
-
+    ]).toArray();
     res.json(popularBooks);
   } catch (error) {
     res.status(500).json({ message: error.message });
@@ -64,11 +61,11 @@ export const getPopularBooks = async (req, res) => {
 export const getActiveBorrowers = async (req, res) => {
   try {
     const { limit = 10, period } = req.query;
-    
+    const db = await connectToDatabase();
+    const transactionsCollection = db.collection('transactions');
     // Create date filter based on period
     let dateFilter = {};
     const currentDate = new Date();
-    
     if (period === 'week') {
       const lastWeek = new Date(currentDate.getTime() - 7 * 24 * 60 * 60 * 1000);
       dateFilter = { issueDate: { $gte: lastWeek } };
@@ -79,9 +76,8 @@ export const getActiveBorrowers = async (req, res) => {
       const lastYear = new Date(currentDate.getTime() - 365 * 24 * 60 * 60 * 1000);
       dateFilter = { issueDate: { $gte: lastYear } };
     }
-
     // Aggregate active borrowers
-    const activeBorrowers = await Transaction.aggregate([
+    const activeBorrowers = await transactionsCollection.aggregate([
       { $match: { isDeleted: false, ...dateFilter } },
       { $group: { _id: '$member', count: { $sum: 1 } } },
       { $sort: { count: -1 } },
@@ -104,8 +100,7 @@ export const getActiveBorrowers = async (req, res) => {
           borrowCount: '$count',
         },
       },
-    ]);
-
+    ]).toArray();
     res.json(activeBorrowers);
   } catch (error) {
     res.status(500).json({ message: error.message });
@@ -117,15 +112,22 @@ export const getActiveBorrowers = async (req, res) => {
 // @access  Private
 export const getOverdueBooks = async (req, res) => {
   try {
-    const overdueTransactions = await Transaction.find({
-      status: 'overdue',
-      isDeleted: false,
-    })
-      .populate('book', 'title author isbn')
-      .populate('member', 'name email phone')
-      .sort({ dueDate: 1 });
-
-    res.json(overdueTransactions);
+    const db = await connectToDatabase();
+    const transactionsCollection = db.collection('transactions');
+    const booksCollection = db.collection('books');
+    const membersCollection = db.collection('members');
+    // Cari transaksi overdue
+    const overdueTransactions = await transactionsCollection
+      .find({ status: 'overdue', isDeleted: false })
+      .sort({ dueDate: 1 })
+      .toArray();
+    // Populate manual
+    const populated = await Promise.all(overdueTransactions.map(async (t) => {
+      const book = t.book ? await booksCollection.findOne({ _id: new ObjectId(t.book) }) : null;
+      const member = t.member ? await membersCollection.findOne({ _id: new ObjectId(t.member) }) : null;
+      return { ...t, book, member };
+    }));
+    res.json(populated);
   } catch (error) {
     res.status(500).json({ message: error.message });
   }
@@ -137,9 +139,11 @@ export const getOverdueBooks = async (req, res) => {
 export const getFineCollections = async (req, res) => {
   try {
     const { startDate, endDate } = req.query;
-    
+    const db = await connectToDatabase();
+    const transactionsCollection = db.collection('transactions');
+    const membersCollection = db.collection('members');
+    const booksCollection = db.collection('books');
     let dateFilter = {};
-    
     if (startDate && endDate) {
       dateFilter = {
         returnDate: {
@@ -152,28 +156,28 @@ export const getFineCollections = async (req, res) => {
     } else if (endDate) {
       dateFilter = { returnDate: { $lte: new Date(endDate) } };
     }
-
     // Get transactions with fines
-    const fineTransactions = await Transaction.find({
-      ...dateFilter,
-      fine: { $gt: 0 },
-      returnDate: { $ne: null },
-      isDeleted: false,
-    })
-      .populate('member', 'name email')
-      .populate('book', 'title')
-      .sort({ returnDate: -1 });
-
+    const fineTransactions = await transactionsCollection
+      .find({
+        ...dateFilter,
+        fine: { $gt: 0 },
+        returnDate: { $ne: null },
+        isDeleted: false,
+      })
+      .sort({ returnDate: -1 })
+      .toArray();
+    // Populate manual
+    const populated = await Promise.all(fineTransactions.map(async (t) => {
+      const member = t.member ? await membersCollection.findOne({ _id: new ObjectId(t.member) }) : null;
+      const book = t.book ? await booksCollection.findOne({ _id: new ObjectId(t.book) }) : null;
+      return { ...t, member, book };
+    }));
     // Calculate total fines
-    const totalFines = fineTransactions.reduce(
-      (total, transaction) => total + transaction.fine,
-      0
-    );
-
+    const totalFines = populated.reduce((total, transaction) => total + (transaction.fine || 0), 0);
     res.json({
-      transactions: fineTransactions,
+      transactions: populated,
       totalFines,
-      count: fineTransactions.length,
+      count: populated.length,
     });
   } catch (error) {
     res.status(500).json({ message: error.message });
@@ -185,15 +189,16 @@ export const getFineCollections = async (req, res) => {
 // @access  Private
 export const getInventoryStatus = async (req, res) => {
   try {
+    const db = await connectToDatabase();
+    const booksCollection = db.collection('books');
     // Get book count by genre
-    const booksByGenre = await Book.aggregate([
+    const booksByGenre = await booksCollection.aggregate([
       { $match: { isDeleted: false } },
       { $group: { _id: '$genre', count: { $sum: 1 } } },
       { $sort: { count: -1 } },
-    ]);
-
+    ]).toArray();
     // Get total books and available books
-    const totalBooks = await Book.aggregate([
+    const totalBooksAgg = await booksCollection.aggregate([
       { $match: { isDeleted: false } },
       {
         $group: {
@@ -202,23 +207,24 @@ export const getInventoryStatus = async (req, res) => {
           availableBooks: { $sum: '$availableCopies' },
         },
       },
-    ]);
-
+    ]).toArray();
     // Get books with low stock (less than 20% copies available)
-    const lowStockBooks = await Book.find({
-      isDeleted: false,
-      $expr: {
-        $lt: [
-          { $divide: ['$availableCopies', '$copies'] },
-          0.2,
-        ],
-      },
-      copies: { $gt: 1 }, // Exclude books with only 1 copy
-    }).select('title author isbn copies availableCopies');
-
+    const lowStockBooks = await booksCollection
+      .find({
+        isDeleted: false,
+        $expr: {
+          $lt: [
+            { $divide: ['$availableCopies', '$copies'] },
+            0.2,
+          ],
+        },
+        copies: { $gt: 1 },
+      })
+      .project({ title: 1, author: 1, isbn: 1, copies: 1, availableCopies: 1 })
+      .toArray();
     res.json({
       booksByGenre,
-      totalBooks: totalBooks.length > 0 ? totalBooks[0] : { totalBooks: 0, availableBooks: 0 },
+      totalBooks: totalBooksAgg.length > 0 ? totalBooksAgg[0] : { totalBooks: 0, availableBooks: 0 },
       lowStockBooks,
     });
   } catch (error) {

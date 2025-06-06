@@ -1,5 +1,6 @@
 import jwt from 'jsonwebtoken';
-import Staff from '../models/staffModel.js';
+import { Staff } from '../models/staffModel.js';
+import { connectToDatabase } from '../config/db.js';
 
 export const protect = async (req, res, next) => {
   // BYPASS AUTH UNTUK DEVELOPMENT/TESTING
@@ -24,13 +25,18 @@ export const protect = async (req, res, next) => {
       const decoded = jwt.verify(token, process.env.JWT_SECRET);
 
       // Get user from the token
-      req.staff = await Staff.findById(decoded.id).select('-password');
+      const db = await connectToDatabase();
+      const staffCollection = db.collection('staff');
+      const staffData = await staffCollection.findOne({ _id: decoded.id });
 
-      if (!req.staff) {
+      if (!staffData) {
         console.error('protect middleware: staff not found for decoded.id', decoded.id);
         res.status(401);
         throw new Error('Not authorized, staff not found');
       }
+
+      const staff = new Staff(staffData);
+      req.staff = staff.toJSON();
 
       next();
     } catch (error) {

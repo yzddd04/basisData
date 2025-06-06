@@ -1,4 +1,5 @@
-import Member from '../models/memberModel.js';
+import { connectToDatabase } from '../config/db.js';
+import { ObjectId } from 'mongodb';
 import Transaction from '../models/transactionModel.js';
 import Trash from '../models/trashModel.js';
 
@@ -8,6 +9,8 @@ import Trash from '../models/trashModel.js';
 export const getMembers = async (req, res) => {
   try {
     const { search, page = 1, limit = 10 } = req.query;
+    const db = await connectToDatabase();
+    const membersCollection = db.collection('members');
     const query = { isDeleted: false };
 
     // Search functionality
@@ -16,19 +19,20 @@ export const getMembers = async (req, res) => {
     }
 
     // Pagination
-    const skip = (page - 1) * limit;
-
-    const members = await Member.find(query)
-      .limit(limit)
+    const skip = (parseInt(page) - 1) * parseInt(limit);
+    const members = await membersCollection
+      .find(query)
+      .limit(parseInt(limit))
       .skip(skip)
-      .sort({ createdAt: -1 });
+      .sort({ createdAt: -1 })
+      .toArray();
 
-    const total = await Member.countDocuments(query);
+    const total = await membersCollection.countDocuments(query);
 
     res.json({
       members,
-      currentPage: page,
-      totalPages: Math.ceil(total / limit),
+      currentPage: parseInt(page),
+      totalPages: Math.ceil(total / parseInt(limit)),
       total,
     });
   } catch (error) {
@@ -41,8 +45,10 @@ export const getMembers = async (req, res) => {
 // @access  Private
 export const getMemberById = async (req, res) => {
   try {
-    const member = await Member.findOne({
-      _id: req.params.id,
+    const db = await connectToDatabase();
+    const membersCollection = db.collection('members');
+    const member = await membersCollection.findOne({
+      _id: new ObjectId(req.params.id),
       isDeleted: false,
     });
 
@@ -63,24 +69,33 @@ export const getMemberById = async (req, res) => {
 export const createMember = async (req, res) => {
   try {
     const { name, email, phone, address, membershipExpiry } = req.body;
+    const db = await connectToDatabase();
+    const membersCollection = db.collection('members');
 
     // Check if member with email already exists
-    const memberExists = await Member.findOne({ email, isDeleted: false });
+    const memberExists = await membersCollection.findOne({ email, isDeleted: false });
 
     if (memberExists) {
       res.status(400);
       throw new Error('Member with this email already exists');
     }
 
-    const member = await Member.create({
+    const member = {
       name,
       email,
       phone,
       address,
-      membershipExpiry: membershipExpiry || new Date(Date.now() + 365 * 24 * 60 * 60 * 1000), // Default 1 year
-    });
+      membershipExpiry: membershipExpiry ? new Date(membershipExpiry) : new Date(Date.now() + 365 * 24 * 60 * 60 * 1000),
+      isDeleted: false,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+      fines: 0,
+      currentBorrowings: 0,
+      totalBorrowings: 0,
+    };
 
-    res.status(201).json(member);
+    const result = await membersCollection.insertOne(member);
+    res.status(201).json({ ...member, _id: result.insertedId });
   } catch (error) {
     res.status(400).json({ message: error.message });
   }
@@ -91,8 +106,10 @@ export const createMember = async (req, res) => {
 // @access  Private
 export const updateMember = async (req, res) => {
   try {
-    const member = await Member.findOne({
-      _id: req.params.id,
+    const db = await connectToDatabase();
+    const membersCollection = db.collection('members');
+    const member = await membersCollection.findOne({
+      _id: new ObjectId(req.params.id),
       isDeleted: false,
     });
 
@@ -101,7 +118,7 @@ export const updateMember = async (req, res) => {
 
       // Check if another member has the same email
       if (email && email !== member.email) {
-        const memberWithEmail = await Member.findOne({
+        const memberWithEmail = await membersCollection.findOne({
           email,
           isDeleted: false,
         });
@@ -112,13 +129,20 @@ export const updateMember = async (req, res) => {
       }
 
       // Update fields
-      member.name = name || member.name;
-      member.email = email || member.email;
-      member.phone = phone || member.phone;
-      member.address = address || member.address;
-      member.membershipExpiry = membershipExpiry || member.membershipExpiry;
+      const updateFields = {
+        name: name || member.name,
+        email: email || member.email,
+        phone: phone || member.phone,
+        address: address || member.address,
+        membershipExpiry: membershipExpiry ? new Date(membershipExpiry) : member.membershipExpiry,
+        updatedAt: new Date(),
+      };
 
-      const updatedMember = await member.save();
+      await membersCollection.updateOne(
+        { _id: new ObjectId(req.params.id) },
+        { $set: updateFields }
+      );
+      const updatedMember = await membersCollection.findOne({ _id: new ObjectId(req.params.id) });
       res.json(updatedMember);
     } else {
       res.status(404);
@@ -134,14 +158,18 @@ export const updateMember = async (req, res) => {
 // @access  Private
 export const deleteMember = async (req, res) => {
   try {
-    const member = await Member.findOne({
-      _id: req.params.id,
+    const db = await connectToDatabase();
+    const membersCollection = db.collection('members');
+    const transactionsCollection = db.collection('transactions');
+    const trashesCollection = db.collection('trashes');
+    const member = await membersCollection.findOne({
+      _id: new ObjectId(req.params.id),
       isDeleted: false,
     });
 
     if (member) {
       // Check if member has active borrowings
-      const activeTransactions = await Transaction.countDocuments({
+      const activeTransactions = await transactionsCollection.countDocuments({
         member: member._id,
         status: { $in: ['borrowed', 'overdue'] },
         isDeleted: false,
@@ -155,17 +183,19 @@ export const deleteMember = async (req, res) => {
       }
 
       // Soft delete
-      member.isDeleted = true;
-      member.deletedAt = Date.now();
-      await member.save();
+      await membersCollection.updateOne(
+        { _id: new ObjectId(req.params.id) },
+        { $set: { isDeleted: true, deletedAt: new Date() } }
+      );
 
       // Add to trash
       try {
-        await Trash.create({
+        await trashesCollection.insertOne({
           modelName: 'Member',
           documentId: member._id,
-          documentData: member.toObject(),
+          documentData: member,
           deletedBy: req.staff ? req.staff._id : null,
+          deletedAt: new Date(),
         });
       } catch (err) {
         console.error('Failed to add to trash:', err);
@@ -186,12 +216,15 @@ export const deleteMember = async (req, res) => {
 // @access  Private
 export const getMemberTransactions = async (req, res) => {
   try {
-    const transactions = await Transaction.find({
-      member: req.params.id,
-      isDeleted: false,
-    })
-      .populate('book', 'title author isbn')
-      .sort({ issueDate: -1 });
+    const db = await connectToDatabase();
+    const transactionsCollection = db.collection('transactions');
+    const transactions = await transactionsCollection
+      .find({
+        member: new ObjectId(req.params.id),
+        isDeleted: false,
+      })
+      .sort({ issueDate: -1 })
+      .toArray();
 
     res.json(transactions);
   } catch (error) {
