@@ -16,7 +16,7 @@ export const login = async (req, res) => {
   try {
     const { email, password } = req.body;
     const db = await connectToDatabase();
-    const staffCollection = db.collection('staff');
+    const staffCollection = db.collection('staffs');
 
     // Check for staff email
     const staffData = await staffCollection.findOne({ email, isDeleted: false });
@@ -52,7 +52,7 @@ export const login = async (req, res) => {
 export const getProfile = async (req, res) => {
   try {
     const db = await connectToDatabase();
-    const staffCollection = db.collection('staff');
+    const staffCollection = db.collection('staffs');
     
     const staffData = await staffCollection.findOne({ _id: req.staff._id });
     
@@ -75,7 +75,7 @@ export const registerStaff = async (req, res) => {
   try {
     const { name, email, password, phone } = req.body;
     const db = await connectToDatabase();
-    const staffCollection = db.collection('staff');
+    const staffCollection = db.collection('staffs');
 
     // Check if staff already exists
     const staffExists = await staffCollection.findOne({ email });

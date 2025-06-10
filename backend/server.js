@@ -29,7 +29,7 @@ app.use(morgan('dev'));
 // Routes
 app.use('/api/books', bookRoutes);
 app.use('/api/members', memberRoutes);
-app.use('/api/staff', staffRoutes);
+app.use('/api/staffs', staffRoutes);
 app.use('/api/transactions', transactionRoutes);
 app.use('/api/reports', reportRoutes);
 app.use('/api/trash', trashRoutes);

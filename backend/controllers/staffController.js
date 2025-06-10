@@ -10,7 +10,7 @@ export const getStaff = async (req, res) => {
   try {
     const { search, role, page = 1, limit = 10 } = req.query;
     const db = await connectToDatabase();
-    const staffCollection = db.collection('staff');
+    const staffCollection = db.collection('staffs');
     const query = {};
 
     // Search functionality
@@ -55,7 +55,7 @@ export const getStaff = async (req, res) => {
 export const getStaffById = async (req, res) => {
   try {
     const db = await connectToDatabase();
-    const staffCollection = db.collection('staff');
+    const staffCollection = db.collection('staffs');
     const staff = await staffCollection.findOne({ _id: new ObjectId(req.params.id) }, { projection: { password: 0 } });
 
     if (staff) {
@@ -75,7 +75,7 @@ export const getStaffById = async (req, res) => {
 export const updateStaff = async (req, res) => {
   try {
     const db = await connectToDatabase();
-    const staffCollection = db.collection('staff');
+    const staffCollection = db.collection('staffs');
     const staff = await staffCollection.findOne({ _id: new ObjectId(req.params.id), isDeleted: false });
 
     if (staff) {
@@ -134,7 +134,7 @@ export const updateStaff = async (req, res) => {
 export const deleteStaff = async (req, res) => {
   try {
     const db = await connectToDatabase();
-    const staffCollection = db.collection('staff');
+    const staffCollection = db.collection('staffs');
     const trashesCollection = db.collection('trashes');
     const staff = await staffCollection.findOne({ _id: new ObjectId(req.params.id), isDeleted: false });
 

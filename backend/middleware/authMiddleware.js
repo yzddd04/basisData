@@ -26,7 +26,7 @@ export const protect = async (req, res, next) => {
 
       // Get user from the token
       const db = await connectToDatabase();
-      const staffCollection = db.collection('staff');
+      const staffCollection = db.collection('staffs');
       const staffData = await staffCollection.findOne({ _id: decoded.id });
 
       if (!staffData) {
