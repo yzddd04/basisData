@@ -11,3 +11,13 @@
 
 - Lokal = Mongoose
 - Cloud = MongoDB native driver
+Project ini berbasi Cloud MonggoDB Atlas
+
+# Cara Menjalankannya
+1. `npm run dev` di project nya
+2. lakukan `cd server` kemudian `npm run dev`
+3. seharusnya frontend akan berjalan di `http://localhost:5173/`
+
+# Dokumentasi
+![image](https://github.com/user-attachments/assets/9cc026fe-d090-475d-a764-57b0c555d05d)
+
